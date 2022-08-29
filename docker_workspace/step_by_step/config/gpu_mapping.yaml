@@ -1,0 +1,4 @@
+mapping_default:
+  tt: [1]
+  worker1: [1]
+  worker2: [1]

@@ -1,0 +1,8 @@
+FROM fedml/fedml:cuda-11.4.0-devel-ubuntu20.04
+RUN python -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --upgrade pip
+RUN pip3 config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+RUN pip3 install --upgrade fedml
+RUN pip3 uninstall -y torch
+RUN pip3 uninstall -y torchaudio
+RUN pip3 uninstall -y torchvision
+RUN pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116 #3050TI
