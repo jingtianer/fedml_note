@@ -1,6 +1,6 @@
 FEDML_DOCKER_IMAGE=fedml:tt
-WORKSPACE=/mnt/d/Jingtian/桌面/快乐bupt/小组相关/工作/fedml/docker_workspace
-FEDML_REPO=/mnt/d/Jingtian/桌面/快乐bupt/小组相关/工作/fedml/FedML
+WORKSPACE=~/Desktop/docker_workspace
+FEDML_REPO=~/Desktop/FedML
 DATA=~/fedml_data
 
 ID=$1
@@ -8,7 +8,8 @@ IP=$2
 NUM=$3
 HOSTNAME=$4
 
-sudo docker run -itd -v $WORKSPACE:/home/workspace -v $FEDML_REPO:/home/fedml_repo -v $DATA:/root/fedml_data \
+docker run -itd -v $WORKSPACE:/home/workspace -v $FEDML_REPO:/home/fedml_repo -v $DATA:/root/fedml_data \
+--name=$HOSTNAME \
 --shm-size=64g --ulimit nofile=65535 --ulimit memlock=-1 --privileged \
 --env FEDML_NODE_INDEX=$ID \
 --env WORKSPACE=$WORKSPACE \
@@ -19,5 +20,7 @@ sudo docker run -itd -v $WORKSPACE:/home/workspace -v $FEDML_REPO:/home/fedml_re
 --gpus all \
 --hostname $HOSTNAME \
 -u fedml --net=host \
+-l fedml \
+-w /home/workspace/step_by_step \
 $FEDML_DOCKER_IMAGE \
 /bin/bash 

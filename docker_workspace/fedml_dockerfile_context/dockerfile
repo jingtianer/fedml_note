@@ -1,8 +1,9 @@
 FROM fedml/fedml:cuda-11.4.0-devel-ubuntu20.04
+# RUN sudo apt upgrade python3
 RUN python -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --upgrade pip
 RUN pip3 config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+RUN pip3 install update
 RUN pip3 install --upgrade fedml
-RUN pip3 uninstall -y torch
-RUN pip3 uninstall -y torchaudio
-RUN pip3 uninstall -y torchvision
-RUN pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116 #3050TI
+COPY ./fedml_files/fedml_client_master_manager.py /usr/local/lib/python3.8/dist-packages/fedml/cross_silo/client/
+COPY ./fedml_files/fedml_aggregator.py /usr/local/lib/python3.8/dist-packages/fedml/cross_silo/server/
+COPY ./fedml_files/fedml_server_manager.py /usr/local/lib/python3.8/dist-packages/fedml/cross_silo/server/

@@ -1,0 +1,174 @@
+wandb_version: 1
+
+_wandb:
+  desc: null
+  value:
+    cli_version: 0.12.16
+    framework: torch
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    python_version: 3.8.10
+    start_time: 1660014164
+    t:
+      1:
+      - 1
+      - 41
+      - 55
+      2:
+      - 1
+      - 41
+      - 55
+      3:
+      - 16
+      4: 3.8.10
+      5: 0.12.16
+      8:
+      - 5
+backend:
+  desc: null
+  value: MQTT_S3
+batch_size:
+  desc: null
+  value: 10
+bootstrap:
+  desc: null
+  value: config/bootstrap.sh
+client_id_list:
+  desc: null
+  value: null
+client_num_in_total:
+  desc: null
+  value: 1000
+client_num_per_round:
+  desc: null
+  value: 2
+client_optimizer:
+  desc: null
+  value: sgd
+comm:
+  desc: null
+  value: null
+comm_round:
+  desc: null
+  value: 50
+cpu_transfer:
+  desc: null
+  value: false
+data_cache_dir:
+  desc: null
+  value: /root/fedml_data
+dataset:
+  desc: null
+  value: mnist
+enable_cuda_rpc:
+  desc: null
+  value: false
+enable_wandb:
+  desc: null
+  value: true
+epochs:
+  desc: null
+  value: 1
+federated_optimizer:
+  desc: null
+  value: FedAvg
+frequency_of_the_test:
+  desc: null
+  value: 5
+global_model_file_path:
+  desc: null
+  value: ./model_file_cache/global_model.pt
+gpu_mapping_file:
+  desc: null
+  value: config/gpu_mapping.yaml
+gpu_mapping_key:
+  desc: null
+  value: mapping_default
+learning_rate:
+  desc: null
+  value: 0.03
+local_rank:
+  desc: null
+  value: 0
+log_file_dir:
+  desc: null
+  value: ./log
+model:
+  desc: null
+  value: lr
+model_file_cache_folder:
+  desc: null
+  value: ./model_file_cache
+mqtt_config_path:
+  desc: null
+  value: config/mqtt_config.yaml
+n_proc_in_silo:
+  desc: null
+  value: 1
+node_rank:
+  desc: null
+  value: 0
+partition_alpha:
+  desc: null
+  value: 0.5
+partition_method:
+  desc: null
+  value: hetero
+proc_rank_in_silo:
+  desc: null
+  value: 0
+process_id:
+  desc: null
+  value: 0
+random_seed:
+  desc: null
+  value: 0
+rank:
+  desc: null
+  value: 0
+role:
+  desc: null
+  value: server
+run_id:
+  desc: null
+  value: '0'
+s3_config_path:
+  desc: null
+  value: config/s3_config.yaml
+scenario:
+  desc: null
+  value: horizontal
+sys_perf_profiling:
+  desc: null
+  value: true
+training_type:
+  desc: null
+  value: cross_silo
+using_gpu:
+  desc: null
+  value: true
+using_mlops:
+  desc: null
+  value: false
+wandb_key:
+  desc: null
+  value: e3be1b9a8ab45f14a6ff454009bc7ca07b8792ba
+wandb_name:
+  desc: null
+  value: fedml_torch_fedavg_mnist_lr
+wandb_project:
+  desc: null
+  value: fedml_mnist_test
+weight_decay:
+  desc: null
+  value: 0.001
+worker_num:
+  desc: null
+  value: 2
+yaml_config_file:
+  desc: null
+  value: config/fedml_config.yaml
+yaml_paths:
+  desc: null
+  value:
+  - config/fedml_config.yaml

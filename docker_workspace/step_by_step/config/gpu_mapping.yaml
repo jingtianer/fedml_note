@@ -1,4 +1,5 @@
 mapping_default:
-  tt: [1]
+  server: [1]
   worker1: [1]
   worker2: [1]
+  worker3: [1]
