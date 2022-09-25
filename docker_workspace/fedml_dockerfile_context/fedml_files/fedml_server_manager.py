@@ -50,10 +50,48 @@ class FedMLServerManager(FedMLCommManager):
         self.register_message_receive_handler(
             MyMessage.MSG_TYPE_C2S_CLIENT_STATUS, self.handle_message_client_status_update,
         )
-
+        
         self.register_message_receive_handler(
-            MyMessage.MSG_TYPE_C2S_SEND_MODEL_TO_SERVER, self.handle_message_receive_model_from_client,
+            MyMessage.MSG_TYPE_C2S_ADD_MODEL_READY, self.handle_message_add_model_ready,
         )
+        
+        self.register_message_receive_handler(
+            MyMessage.MSG_TYPE_C2S_ADD_MODEL_SEND, self.handle_message_add_model_send,
+        )
+        
+        
+    def handle_message_add_model_send(self, msg_params):
+        sender_id = msg_params.get(MyMessage.MSG_ARG_KEY_SENDER)
+        real_id = self.client_real_ids.index(sender_id)
+        if self.client_idx_in_this_round == len(self.client_id_list_in_this_round):
+            self.client_idx_in_this_round = 0
+        else :
+            self.send_next()
+        if self.aggregator.add_model_send_result(real_id):
+            b_all_received = False
+            retry_time = 0
+            while not b_all_received:
+                time.sleep(1)
+                try :
+                    b_all_received = self.aggregator.check_whether_all_receive(self.args.round_idx)
+                except:
+                    pass
+                retry_time += 1
+                assert retry_time < 15
+            self.on_all_received()
+            
+    def send_next(self):
+        self.send_start_add_model(self.client_id_list_in_this_round[self.client_idx_in_this_round])
+        self.client_idx_in_this_round += 1
+        
+        
+    def handle_message_add_model_ready(self, msg_params):
+        sender_id = msg_params.get(MyMessage.MSG_ARG_KEY_SENDER)
+        real_id = self.client_real_ids.index(sender_id)
+        if self.aggregator.add_ready_result(real_id):
+            self.client_idx_in_this_round = 0
+            self.send_next()
+
 
     def handle_messag_connection_ready(self, msg_params):
         self.client_id_list_in_this_round = self.aggregator.client_selection(
@@ -102,80 +140,67 @@ class FedMLServerManager(FedMLCommManager):
             self.is_initialized = True
             
 
-    def handle_message_receive_model_from_client(self, msg_params):
-        sender_id = msg_params.get(MyMessage.MSG_ARG_KEY_SENDER)
+    def on_all_received(self):
+        # if hasattr(self.args, "using_mlops") and self.args.using_mlops:
+        #     self.mlops_event.log_event_ended(
+        #         "server.wait", event_value=str(self.args.round_idx)
+        #     )
+        #     self.mlops_event.log_event_started(
+        #         "server.agg_and_eval", event_value=str(self.args.round_idx)
+        #     )
+        mlops.event("server.wait", event_started=False, event_value=str(self.args.round_idx))
         mlops.event(
-            "comm_c2s", event_started=False, event_value=str(self.args.round_idx), event_edge_id=sender_id,
+            "server.agg_and_eval", event_started=True, event_value=str(self.args.round_idx),
+        )
+        tick = time.time()
+        global_model_params = self.aggregator.aggregate(self.args.round_idx)
+        MLOpsProfilerEvent.log_to_wandb({"AggregationTime": time.time() - tick, "round": self.args.round_idx})
+
+        self.aggregator.test_on_server_for_all_clients(self.args.round_idx)
+
+        mlops.event("server.agg_and_eval", event_started=False, event_value=str(self.args.round_idx))
+
+        # send round info to the MQTT backend
+        mlops.log_round_info(self.round_num, self.args.round_idx)
+
+        self.client_id_list_in_this_round = self.aggregator.client_selection(
+            self.args.round_idx, self.client_real_ids, self.args.client_num_per_round
+        )
+        self.data_silo_index_list = self.aggregator.data_silo_selection(
+            self.args.round_idx, self.args.client_num_in_total, len(self.client_id_list_in_this_round),
         )
 
-        # model_params = msg_params.get(MyMessage.MSG_ARG_KEY_MODEL_PARAMS)
-        # local_sample_number = msg_params.get(MyMessage.MSG_ARG_KEY_NUM_SAMPLES)
+        if self.args.round_idx == 0:
+            MLOpsProfilerEvent.log_to_wandb({"BenchmarkStart": time.time()})
 
-        # self.aggregator.add_local_trained_result(
-        #     self.client_real_ids.index(sender_id), model_params, local_sample_number
-        # )
-        b_all_received = self.aggregator.check_whether_all_receive(self.args.round_idx)
-        if b_all_received:
+        
+        
+        http_api = self.aggregator.http_api
+        model_params = {k:v.tolist() for k,v in global_model_params.items()}
+        req = {"weight":model_params}
+        req_json = json.dumps(req)
+        model = json.dumps(req_json)
+        ret = http_api.UpdateGlobal(None, {"model": model})
+        self.onUpdateCallBack(ret)
+        # todo: 发送一份到区块链
+
+        self.args.round_idx += 1
+        if self.args.round_idx == self.round_num:
+            self.onNewRoundCallBack(ret, global_model_params, self.send_message_sync_model_to_client)
+            mlops.log_aggregation_finished_status()
+            logging.info("=============training is finished. Cleanup...============")
+            self.cleanup()
+        else:
+            http_api = self.aggregator.http_api
+            ret = http_api.NewRound(None, {"rid":"r{}".format(self.args.round_idx)})
+            self.onNewRoundCallBack(ret, global_model_params, self.send_message_sync_model_to_client)
+            logging.info("\n\n==========start {}-th round training===========\n".format(self.args.round_idx))
             # if hasattr(self.args, "using_mlops") and self.args.using_mlops:
-            #     self.mlops_event.log_event_ended(
+            #     self.mlops_event.log_event_started(
             #         "server.wait", event_value=str(self.args.round_idx)
             #     )
-            #     self.mlops_event.log_event_started(
-            #         "server.agg_and_eval", event_value=str(self.args.round_idx)
-            #     )
-            mlops.event("server.wait", event_started=False, event_value=str(self.args.round_idx))
-            mlops.event(
-                "server.agg_and_eval", event_started=True, event_value=str(self.args.round_idx),
-            )
-            tick = time.time()
-            global_model_params = self.aggregator.aggregate(self.args.round_idx)
-            MLOpsProfilerEvent.log_to_wandb({"AggregationTime": time.time() - tick, "round": self.args.round_idx})
+            mlops.event("server.wait", event_started=True, event_value=str(self.args.round_idx))
 
-            self.aggregator.test_on_server_for_all_clients(self.args.round_idx)
-
-            mlops.event("server.agg_and_eval", event_started=False, event_value=str(self.args.round_idx))
-
-            # send round info to the MQTT backend
-            mlops.log_round_info(self.round_num, self.args.round_idx)
-
-            self.client_id_list_in_this_round = self.aggregator.client_selection(
-                self.args.round_idx, self.client_real_ids, self.args.client_num_per_round
-            )
-            self.data_silo_index_list = self.aggregator.data_silo_selection(
-                self.args.round_idx, self.args.client_num_in_total, len(self.client_id_list_in_this_round),
-            )
-
-            if self.args.round_idx == 0:
-                MLOpsProfilerEvent.log_to_wandb({"BenchmarkStart": time.time()})
-
-            
-            
-            http_api = self.aggregator.http_api
-            model_params = {k:v.tolist() for k,v in global_model_params.items()}
-            req = {"weight":model_params}
-            req_json = json.dumps(req)
-            model = json.dumps(req_json)
-            ret = http_api.UpdateGlobal(None, {"model": model})
-            self.onUpdateCallBack(ret)
-            # todo: 发送一份到区块链
-
-            self.args.round_idx += 1
-            if self.args.round_idx == self.round_num:
-                self.onNewRoundCallBack(ret, global_model_params, self.send_message_sync_model_to_client)
-                mlops.log_aggregation_finished_status()
-                logging.info("=============training is finished. Cleanup...============")
-                self.cleanup()
-            else:
-                http_api = self.aggregator.http_api
-                ret = http_api.NewRound(None, {"rid":"r{}".format(self.args.round_idx)})
-                self.onNewRoundCallBack(ret, global_model_params, self.send_message_sync_model_to_client)
-                logging.info("\n\n==========start {}-th round training===========\n".format(self.args.round_idx))
-                # if hasattr(self.args, "using_mlops") and self.args.using_mlops:
-                #     self.mlops_event.log_event_started(
-                #         "server.wait", event_value=str(self.args.round_idx)
-                #     )
-                mlops.event("server.wait", event_started=True, event_value=str(self.args.round_idx))
-    
     def onUpdateCallBack(self, ret):
         logging.info("=============chaincode model up to date============")
         
@@ -197,8 +222,14 @@ class FedMLServerManager(FedMLCommManager):
             funktion(
                 receiver_id, global_model_params, self.data_silo_index_list[client_idx_in_this_round],
             )
-            time.sleep(1)
+            # time.sleep(1)
             client_idx_in_this_round += 1
+
+    def send_start_add_model(self, receive_id):
+        tick = time.time()
+        message = Message(MyMessage.MSG_TYPE_S2C_START_ADD_MODEL, self.get_sender_id(), receive_id)
+        self.send_message(message)
+        MLOpsProfilerEvent.log_to_wandb({"Communiaction/Send_Total": time.time() - tick})
         
     def cleanup(self):
 

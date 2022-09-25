@@ -7,4 +7,6 @@ RUN pip3 install --upgrade fedml
 COPY ./fedml_files/fedml_client_master_manager.py /usr/local/lib/python3.8/dist-packages/fedml/cross_silo/client/
 COPY ./fedml_files/fedml_aggregator.py /usr/local/lib/python3.8/dist-packages/fedml/cross_silo/server/
 COPY ./fedml_files/fedml_server_manager.py /usr/local/lib/python3.8/dist-packages/fedml/cross_silo/server/
+COPY ./fedml_files/message_define.py /usr/local/lib/python3.8/dist-packages/fedml/cross_silo/server/
+COPY ./fedml_files/message_define.py /usr/local/lib/python3.8/dist-packages/fedml/cross_silo/client/
 COPY ./fedml_files/yamlRequests/ /usr/local/lib/python3.8/dist-packages/fedml/cross_silo/yamlRequests/

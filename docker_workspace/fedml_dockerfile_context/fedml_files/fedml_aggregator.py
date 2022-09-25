@@ -42,9 +42,13 @@ class FedMLAggregator(object):
         logging.info("self.device = {}".format(self.device))
         # self.model_dict = dict()
         # self.sample_num_dict = dict()
-        # self.flag_client_model_uploaded_dict = dict()
-        # for idx in range(self.client_num):
-        #     self.flag_client_model_uploaded_dict[idx] = False
+        self.flag_client_model_ready_dict = dict()
+        for idx in range(self.client_num):
+            self.flag_client_model_ready_dict[idx] = False
+        
+        self.flag_client_model_send_dict = dict()
+        for idx in range(self.client_num):
+            self.flag_client_model_send_dict[idx] = False
 
     def get_global_model_params(self):
         return self.aggregator.get_model_params()
@@ -60,7 +64,28 @@ class FedMLAggregator(object):
         # self.model_dict[index] = model_params
         # self.sample_num_dict[index] = sample_num
         # self.flag_client_model_uploaded_dict[index] = True
-
+    
+    # 返回是否全部为True
+    def add_ready_result(self, real_id):
+        self.flag_client_model_ready_dict[real_id] = True
+        for v in self.flag_client_model_ready_dict.values():
+            if not v:
+                return False
+            
+        for k in self.flag_client_model_ready_dict.keys():
+            self.flag_client_model_ready_dict[k] = False
+        return True
+    
+    # 返回是否全部为True
+    def add_model_send_result(self, real_id):
+        self.flag_client_model_send_dict[real_id] = True
+        for v in self.flag_client_model_send_dict.values():
+            if not v:
+                return False
+        for k in self.flag_client_model_send_dict.keys():
+            self.flag_client_model_send_dict[k] = False
+        return True
+    
     def check_whether_all_receive(self, round_idx):
         # todo: 从区块链获取
         ret = self.http_api.QueryWetherAllReceived(None, {"rid":"r{}".format(round_idx)})

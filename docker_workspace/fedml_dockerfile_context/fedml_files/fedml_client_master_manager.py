@@ -13,6 +13,7 @@ from ...core.distributed.fedml_comm_manager import FedMLCommManager
 from ...core.distributed.communication.message import Message
 from ...core.mlops.mlops_profiler_event import MLOpsProfilerEvent
 from ..yamlRequests.configLoader import init
+from ...ml.engine import ml_engine_adapter
 
 class ClientMasterManager(FedMLCommManager):
     def __init__(self, args, trainer_dist_adapter, comm=None, rank=0, size=0, backend="MPI"):
@@ -25,6 +26,8 @@ class ClientMasterManager(FedMLCommManager):
         self.round_idx = 0
         self.rank = rank
         self.client_real_ids = json.loads(args.client_id_list)
+        self.weights = None
+        self.local_sample_num = None
         logging.info("self.client_real_ids = {}".format(self.client_real_ids))
         # for the client, len(self.client_real_ids)==1: we only specify its client id in the list, not including others.
         self.client_real_id = self.client_real_ids[0]
@@ -48,12 +51,20 @@ class ClientMasterManager(FedMLCommManager):
         self.register_message_receive_handler(
             MyMessage.MSG_TYPE_S2C_FINISH, self.handle_message_finish,
         )
+        
+        self.register_message_receive_handler(
+            MyMessage.MSG_TYPE_S2C_START_ADD_MODEL, self.handle_message_start_add_model,
+        )
+        
+    def handle_message_start_add_model(self, msg_params):
+        
+        self.send_model_to_chain(self.weights, self.local_sample_num)
+        self.send_message_model_send(0)
 
     def handle_message_connection_ready(self, msg_params):
         if not self.has_sent_online_msg:
             self.has_sent_online_msg = True
             self.send_client_status(0)
-
             mlops.log_sys_perf(self.args)
 
     def handle_message_check_status(self, msg_params):
@@ -101,29 +112,29 @@ class ClientMasterManager(FedMLCommManager):
 
     def cleanup(self):
         self.finish()
-
-    def send_model_to_server(self, receive_id, weights, local_sample_num):
-        tick = time.time()
-        mlops.event("comm_c2s", event_started=True, event_value=str(self.round_idx))
-        message = Message(MyMessage.MSG_TYPE_C2S_SEND_MODEL_TO_SERVER, self.client_real_id, receive_id,)
-        # 发给区块链
-        message.add_params(MyMessage.MSG_ARG_KEY_MODEL_PARAMS, weights)
-        message.add_params(MyMessage.MSG_ARG_KEY_NUM_SAMPLES, local_sample_num)
-        # 发送前可能需要用这个函数处理
-        time.sleep(1*self.client_real_id)
-        from ...ml.engine import ml_engine_adapter
+    
+    def send_model_to_chain(self, weights, local_sample_num):
         model_params = ml_engine_adapter.model_params_to_device(self.args, weights, self.trainer_dist_adapter.device)
         model_params = {k:v.tolist() for k,v in model_params.items()}
-        import json
         req = {"sample_num":local_sample_num, "weight":model_params}
         req_json = json.dumps(req)
         self.http_api.AddModel(None, {"rid":"r{}".format(self.round_idx), "model":req_json})
+        
+    
+    # 已修改，功能是告诉server已经ready，可以发送模型了
+    def send_model_to_server(self, receive_id):
+        tick = time.time()
+        mlops.event("comm_c2s", event_started=True, event_value=str(self.round_idx))
+        message = Message(MyMessage.MSG_TYPE_C2S_ADD_MODEL_READY, self.client_real_id, receive_id,)
         self.send_message(message)
-
         MLOpsProfilerEvent.log_to_wandb({"Communication/Send_Total": time.time() - tick})
         mlops.log_client_model_info(
             self.round_idx + 1, model_url=message.get(MyMessage.MSG_ARG_KEY_MODEL_PARAMS_URL),
         )
+    
+    def send_message_model_send(self, receive_id):
+        message = Message(MyMessage.MSG_TYPE_C2S_ADD_MODEL_SEND, self.client_real_id, receive_id)
+        self.send_message(message)
 
     def send_client_status(self, receive_id, status="ONLINE"):
         logging.info("send_client_status")
@@ -162,8 +173,9 @@ class ClientMasterManager(FedMLCommManager):
         # the current model is still DDP-wrapped under cross-silo-hi setting
         if self.args.scenario == FEDML_CROSS_SILO_SCENARIO_HIERARCHICAL:
             weights = convert_model_params_from_ddp(weights)
-
-        self.send_model_to_server(0, weights, local_sample_num)
+        
+        self.weights, self.local_sample_num = weights, local_sample_num
+        self.send_model_to_server(0)
 
     def run(self):
         super().run()
