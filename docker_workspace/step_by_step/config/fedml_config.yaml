@@ -35,7 +35,7 @@ validation_args:
 
 device_args:
   worker_num: 3
-  using_gpu: true
+  using_gpu: false
   gpu_mapping_file: config/gpu_mapping.yaml
   gpu_mapping_key: mapping_default
 

@@ -4,10 +4,11 @@ import time
 
 import numpy as np
 import torch
+import json
 
 from fedml import mlops
 from ...ml.engine import ml_engine_adapter
-
+from ..yamlRequests.configLoader import init
 
 class FedMLAggregator(object):
     def __init__(
@@ -37,6 +38,7 @@ class FedMLAggregator(object):
 
         self.client_num = client_num
         self.device = device
+        self.http_api = init("/home/yaml_requests_config/config.yaml")
         logging.info("self.device = {}".format(self.device))
         # self.model_dict = dict()
         # self.sample_num_dict = dict()
@@ -59,25 +61,34 @@ class FedMLAggregator(object):
         # self.sample_num_dict[index] = sample_num
         # self.flag_client_model_uploaded_dict[index] = True
 
-    def check_whether_all_receive(self):
+    def check_whether_all_receive(self, round_idx):
         # todo: 从区块链获取
-        logging.debug("client_num = {}".format(self.client_num))
-        for idx in range(self.client_num):
-            if not self.flag_client_model_uploaded_dict[idx]:
-                return False
-        for idx in range(self.client_num):
-            self.flag_client_model_uploaded_dict[idx] = False
-        return True
+        ret = self.http_api.QueryWetherAllReceived(None, {"rid":"r{}".format(round_idx)})
+        b = json.loads(ret)
+        # print("jingtian check_whether_all_receive = ", b, " type = ", type(b), " rid = r", round_idx)
+        return b
 
-    def aggregate(self):
+    def handleReceivedModels(self, ret):
+        ret_obj = json.loads(ret)
+        sample_num_dict = {}
+        model_dict = {}
+        for i, v in enumerate(ret_obj.values()):
+            req = json.loads(v)
+            sample_num_dict[i] = req['sample_num']
+            model_dict[i] = req['weight']
+            for k, v in model_dict[i].items():
+                model_dict[i][k] = torch.Tensor(np.array(model_dict[i][k], dtype=np.float64)).to(self.device)
+        return sample_num_dict, model_dict
+
+    def aggregate(self, round_idx):
         start_time = time.time()
-
+        sample_num_dict, model_dict = self.handleReceivedModels(self.http_api.QueryAllReceived(None, {"rid":"r{}".format(round_idx)}))
         model_list = []
         for idx in range(self.client_num):
             # todo: 从区块链获取
             # 获取到的数据可能要用这个处理
             # model_params = ml_engine_adapter.model_params_to_device(self.args, model_params, self.device)
-            model_list.append((self.sample_num_dict[idx], self.model_dict[idx]))
+            model_list.append((sample_num_dict[idx], model_dict[idx]))
         model_list = self.aggregator.on_before_aggregation(model_list)
         averaged_params = self.aggregator.aggregate(model_list)
         averaged_params = self.aggregator.on_after_aggregation(averaged_params)
@@ -87,7 +98,7 @@ class FedMLAggregator(object):
         end_time = time.time()
         logging.info("aggregate time cost: %d" % (end_time - start_time))
         return averaged_params
-
+        
     def data_silo_selection(self, round_idx, client_num_in_total, client_num_per_round):
         """
 

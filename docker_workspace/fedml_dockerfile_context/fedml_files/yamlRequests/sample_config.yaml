@@ -1,0 +1,91 @@
+url: '10.128.196.184'
+port: '3000'
+methods:
+  get_async:
+    type: 'post'
+    async: true
+    res-type: 'json'
+    path: '/invokeChaincode/json'
+    save: './res'
+    body:
+      content-type: 'json'
+      content:
+        function: 'get'
+        peer: 0
+        org: 1
+  set_async:
+    type: 'post'
+    async: true
+    res-type: 'json'
+    path: '/invokeChaincode/json'
+    save: './res'
+    body:
+      content-type: 'json'
+      content:
+        function: 'set'
+        peer: 0
+        org: 1
+  get:
+    type: 'post'
+    async: false
+    res-type: 'json'
+    path: '/invokeChaincode/json'
+    save: './res'
+    body:
+      content-type: 'json'
+      content:
+        function: 'get'
+        peer: 0
+        org: 1
+  set:
+    type: 'post'
+    async: false
+    res-type: 'json'
+    path: '/invokeChaincode/json'
+    save: './res'
+    body:
+      content-type: 'json'
+      content:
+        function: 'set'
+        peer: 0
+        org: 1
+
+  get_file:
+    type: 'post'
+    async: false
+    res-type: 'binary'
+    path: '/invokeChaincode/files'
+    params:
+      function: 'setFile'
+      peer: 0
+      org: 1
+    body:
+      content-type: 'binary'
+      files:
+        res: "./test.py"
+  set_file:
+    type: 'post'
+    async: false
+    res-type: 'binary'
+    path: '/invokeChaincode/files'
+    save: './res'
+    params:
+      function: 'setFile'
+      peer: 0
+      org: 1
+    body:
+      content-type: 'binary'
+      files:
+        res: "./test.py"
+      
+
+  QueryAllReceived:
+    type: 'post'
+    async: false
+    res-type: 'json'
+    path: '/invokeChaincode/QueryAllReceived'
+    params:
+      peer: 0
+      org: 1
+    body:
+      content-type: 'json'

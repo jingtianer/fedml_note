@@ -8,6 +8,8 @@ from ...core.distributed.communication.message import Message
 from ...core.distributed.fedml_comm_manager import FedMLCommManager
 from ...core.mlops.mlops_profiler_event import MLOpsProfilerEvent
 
+import threading
+
 
 class FedMLServerManager(FedMLCommManager):
     def __init__(
@@ -31,16 +33,14 @@ class FedMLServerManager(FedMLCommManager):
 
     def send_init_msg(self):
         global_model_params = self.aggregator.get_global_model_params()
-
-        client_idx_in_this_round = 0
-        for client_id in self.client_id_list_in_this_round:
-            self.send_message_init_config(
-                client_id, global_model_params, self.data_silo_index_list[client_idx_in_this_round],
-            )
-            client_idx_in_this_round += 1
+        http_api = self.aggregator.http_api
+        ret = http_api.NewRound(None, {"rid":"r{}".format(self.args.round_idx)})
+        self.onNewRoundCallBack(ret, global_model_params, self.send_message_init_config)
 
         mlops.event("server.wait", event_started=True, event_value=str(self.args.round_idx))
-
+        
+        logging.info("\n\n==========start {}-th round training===========\n".format(self.args.round_idx))
+        
     def register_message_receive_handlers(self):
         logging.info("register_message_receive_handlers------")
         self.register_message_receive_handler(
@@ -100,6 +100,7 @@ class FedMLServerManager(FedMLCommManager):
             # send initialization message to all clients to start training
             self.send_init_msg()
             self.is_initialized = True
+            
 
     def handle_message_receive_model_from_client(self, msg_params):
         sender_id = msg_params.get(MyMessage.MSG_ARG_KEY_SENDER)
@@ -107,15 +108,13 @@ class FedMLServerManager(FedMLCommManager):
             "comm_c2s", event_started=False, event_value=str(self.args.round_idx), event_edge_id=sender_id,
         )
 
-        real_id = self.client_real_ids.index(sender_id)
         # model_params = msg_params.get(MyMessage.MSG_ARG_KEY_MODEL_PARAMS)
         # local_sample_number = msg_params.get(MyMessage.MSG_ARG_KEY_NUM_SAMPLES)
 
         # self.aggregator.add_local_trained_result(
         #     self.client_real_ids.index(sender_id), model_params, local_sample_number
         # )
-        b_all_received = self.aggregator.check_whether_all_receive()
-        logging.info("b_all_received = " + str(b_all_received))
+        b_all_received = self.aggregator.check_whether_all_receive(self.args.round_idx)
         if b_all_received:
             # if hasattr(self.args, "using_mlops") and self.args.using_mlops:
             #     self.mlops_event.log_event_ended(
@@ -129,7 +128,7 @@ class FedMLServerManager(FedMLCommManager):
                 "server.agg_and_eval", event_started=True, event_value=str(self.args.round_idx),
             )
             tick = time.time()
-            global_model_params = self.aggregator.aggregate()
+            global_model_params = self.aggregator.aggregate(self.args.round_idx)
             MLOpsProfilerEvent.log_to_wandb({"AggregationTime": time.time() - tick, "round": self.args.round_idx})
 
             self.aggregator.test_on_server_for_all_clients(self.args.round_idx)
@@ -149,27 +148,58 @@ class FedMLServerManager(FedMLCommManager):
             if self.args.round_idx == 0:
                 MLOpsProfilerEvent.log_to_wandb({"BenchmarkStart": time.time()})
 
-            client_idx_in_this_round = 0
-            for receiver_id in self.client_id_list_in_this_round:
-                self.send_message_sync_model_to_client(
-                    receiver_id, global_model_params, self.data_silo_index_list[client_idx_in_this_round],
-                )
-                # todo: 发送一份到区块链
-                client_idx_in_this_round += 1
+            
+            
+            http_api = self.aggregator.http_api
+            model_params = {k:v.tolist() for k,v in global_model_params.items()}
+            req = {"weight":model_params}
+            req_json = json.dumps(req)
+            model = json.dumps(req_json)
+            ret = http_api.UpdateGlobal(None, {"model": model})
+            self.onUpdateCallBack(ret)
+            # todo: 发送一份到区块链
 
             self.args.round_idx += 1
             if self.args.round_idx == self.round_num:
+                self.onNewRoundCallBack(ret, global_model_params, self.send_message_sync_model_to_client)
                 mlops.log_aggregation_finished_status()
                 logging.info("=============training is finished. Cleanup...============")
                 self.cleanup()
             else:
+                http_api = self.aggregator.http_api
+                ret = http_api.NewRound(None, {"rid":"r{}".format(self.args.round_idx)})
+                self.onNewRoundCallBack(ret, global_model_params, self.send_message_sync_model_to_client)
                 logging.info("\n\n==========start {}-th round training===========\n".format(self.args.round_idx))
                 # if hasattr(self.args, "using_mlops") and self.args.using_mlops:
                 #     self.mlops_event.log_event_started(
                 #         "server.wait", event_value=str(self.args.round_idx)
                 #     )
                 mlops.event("server.wait", event_started=True, event_value=str(self.args.round_idx))
-
+    
+    def onUpdateCallBack(self, ret):
+        logging.info("=============chaincode model up to date============")
+        
+    def onNewRoundCallBack(self, ret, global_model_params , funktion):
+        # def Run():
+        #     client_idx_in_this_round = 0
+        #     for receiver_id in self.client_id_list_in_this_round:
+        #         funktion(
+        #             receiver_id, global_model_params, self.data_silo_index_list[client_idx_in_this_round],
+        #         )
+        #         time.sleep(1)
+        #         client_idx_in_this_round += 1
+        # logging.info("=============New Round Created============")
+        # # if global_model_params is not None:
+        # threading.Thread(target=Run).start()
+        
+        client_idx_in_this_round = 0
+        for receiver_id in self.client_id_list_in_this_round:
+            funktion(
+                receiver_id, global_model_params, self.data_silo_index_list[client_idx_in_this_round],
+            )
+            time.sleep(1)
+            client_idx_in_this_round += 1
+        
     def cleanup(self):
 
         client_idx_in_this_round = 0

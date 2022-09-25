@@ -9,6 +9,7 @@ NUM=$3
 HOSTNAME=$4
 
 docker run -itd -v $WORKSPACE:/home/workspace -v $FEDML_REPO:/home/fedml_repo -v $DATA:/root/fedml_data \
+-v $WORKSPACE/yaml-requests/config/$HOSTNAME:/home/yaml_requests_config \
 --name=$HOSTNAME \
 --shm-size=64g --ulimit nofile=65535 --ulimit memlock=-1 --privileged \
 --env FEDML_NODE_INDEX=$ID \

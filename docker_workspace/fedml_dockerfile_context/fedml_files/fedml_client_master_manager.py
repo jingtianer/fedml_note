@@ -12,7 +12,7 @@ from .utils import convert_model_params_from_ddp, convert_model_params_to_ddp
 from ...core.distributed.fedml_comm_manager import FedMLCommManager
 from ...core.distributed.communication.message import Message
 from ...core.mlops.mlops_profiler_event import MLOpsProfilerEvent
-
+from ..yamlRequests.configLoader import init
 
 class ClientMasterManager(FedMLCommManager):
     def __init__(self, args, trainer_dist_adapter, comm=None, rank=0, size=0, backend="MPI"):
@@ -20,6 +20,7 @@ class ClientMasterManager(FedMLCommManager):
         self.trainer_dist_adapter = trainer_dist_adapter
         self.args = args
 
+        self.http_api = init("/home/yaml_requests_config/config.yaml")
         self.num_rounds = args.comm_round
         self.round_idx = 0
         self.rank = rank
@@ -106,19 +107,17 @@ class ClientMasterManager(FedMLCommManager):
         mlops.event("comm_c2s", event_started=True, event_value=str(self.round_idx))
         message = Message(MyMessage.MSG_TYPE_C2S_SEND_MODEL_TO_SERVER, self.client_real_id, receive_id,)
         # 发给区块链
-        # message.add_params(MyMessage.MSG_ARG_KEY_MODEL_PARAMS, weights)
-        # message.add_params(MyMessage.MSG_ARG_KEY_NUM_SAMPLES, local_sample_num)
+        message.add_params(MyMessage.MSG_ARG_KEY_MODEL_PARAMS, weights)
+        message.add_params(MyMessage.MSG_ARG_KEY_NUM_SAMPLES, local_sample_num)
         # 发送前可能需要用这个函数处理
+        time.sleep(1*self.client_real_id)
         from ...ml.engine import ml_engine_adapter
         model_params = ml_engine_adapter.model_params_to_device(self.args, weights, self.trainer_dist_adapter.device)
         model_params = {k:v.tolist() for k,v in model_params.items()}
-        logging.info("Jingtian: type of model_params: %s" % type(model_params))
         import json
-        req = {"sample_num":local_sample_num, "model":model_params}
+        req = {"sample_num":local_sample_num, "weight":model_params}
         req_json = json.dumps(req)
-        logging.info("Jingtian: req: " + (req_json))
-        with open("req_round{}.json".format(self.round_idx)) as f:
-            f.write(req_json)
+        self.http_api.AddModel(None, {"rid":"r{}".format(self.round_idx), "model":req_json})
         self.send_message(message)
 
         MLOpsProfilerEvent.log_to_wandb({"Communication/Send_Total": time.time() - tick})
